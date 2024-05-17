@@ -78,7 +78,7 @@ class Main {
         else
             median = prices.get(numPrises/2);
 
-        System.out.println("Разница между средней ценой и медианой: " + (prices.get(9)));
+        System.out.println("Разница между средней ценой и медианой: " + (average - median));
 
     }
 }
