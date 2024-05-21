@@ -1,12 +1,14 @@
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+
 import java.io.IOException;
 import java.io.File;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
-
+import java.time.ZoneId;
 
 class Main {
     public static class Ticket {
@@ -28,34 +30,46 @@ class Main {
         ObjectMapper objectMapper = new ObjectMapper();
 
         // Загружаем файл с данными формата JSON с помощью методов библиотеки Jackson
-        Map<String, List<Ticket>> tickets = objectMapper.readValue(new File("tickets.json"), new TypeReference<Map<String, List<Ticket>>>(){});
+        Map<String, List<Ticket>> tickets = objectMapper.readValue(new File("tickets.json"), new TypeReference<Map<String, List<Ticket>>>() {});
         List<Ticket> flights = tickets.get("tickets"); // Вытаскиваем список объектов (билетов) из Мап-а
-        SimpleDateFormat parser = new SimpleDateFormat("HH:mm");  // Создаем обработчик формата времени
-        Map<String, List<Duration>> flightTimes = new HashMap<>(); // Создаем мап для записи времени полетов для каждого перевозчика
-        List<Integer> prices = new ArrayList<>(); // Создаем список для хранения цен билетов
 
+        SimpleDateFormat dateTimeFormat = new SimpleDateFormat("dd.MM.yy HH:mm");  // Создаем обработчик формата даты и времени
+
+        Map<String, List<Duration>> flightDurations = new HashMap<>(); // Создаем мап для записи времени полетов для каждого перевозчика
+        List<Integer> prices = new ArrayList<>(); // Создаем список для хранения цен билетов
         for (Ticket ticket : flights) {
             if (ticket.origin.equals("VVO") && ticket.destination.equals("TLV")) {// Делаем отбор где только VVO и TLV
-                Date departure = parser.parse(ticket.departure_time);
-                Date arrival = parser.parse(ticket.arrival_time);
-                long milliseconds = arrival.getTime() - departure.getTime();
-                Duration duration = Duration.ofMillis(milliseconds);
-
-
-
-                flightTimes.computeIfAbsent(ticket.carrier, k -> new ArrayList<>()).add(duration);  // Записываем время полета в map
-
-
-
-                prices.add(ticket.price); // Записываем стоимость билета в список
+                // Преобразуем строчные даты + время в Date
+                Date departure = dateTimeFormat.parse(ticket.departure_date + " " + ticket.departure_time);
+                Date arrival = dateTimeFormat.parse(ticket.arrival_date + " " + ticket.arrival_time);
+                // Преобразуем Date в LocalDateTime (возможно не самый оптимальный вариант, но главное рабочий)
+                LocalDateTime departureDateTime = LocalDateTime.ofInstant(departure.toInstant(), ZoneId.systemDefault());
+                LocalDateTime arrivalDateTime = LocalDateTime.ofInstant(arrival.toInstant(), ZoneId.systemDefault());
+                // Вычисляем разницу по времени
+                Duration duration = Duration.between(departureDateTime, arrivalDateTime);
+                List<Duration> durations = flightDurations.get(ticket.carrier);
+                if (durations == null) {
+                    durations = new ArrayList<>();
+                    flightDurations.put(ticket.carrier, durations);
+                }
+                durations.add(duration);
+                prices.add(ticket.price);
             }
         }
 
-        for (Map.Entry<String, List<Duration>> entry : flightTimes.entrySet()) {
-
-            // Находим минимальное время полета и выводим результат
-            Duration min = Collections.min(entry.getValue());
-            System.out.println("Минимальное время полета для " + entry.getKey() + ": " + min.toHoursPart() + " часов и " + min.toMinutesPart() + " минут");
+        for (Map.Entry<String, List<Duration>> entry : flightDurations.entrySet()) {
+            // Находим минимальное время полета среди всех для конкретного перевозчика
+            List<Duration> durations = entry.getValue();
+            Duration minTravelTime = durations.get(0);
+            for (Duration duration : durations) {
+                if (duration.compareTo(minTravelTime) < 0) {
+                    minTravelTime = duration;
+                }
+            }
+            long days = minTravelTime.toDaysPart();
+            long hours = minTravelTime.toHoursPart();
+            long minutes = minTravelTime.toMinutesPart();
+            System.out.println(String.format("Минимальное время полета для %s: %d д. %d ч. %d м.", entry.getKey(), days, hours, minutes));
         }
 
         // Сортируем список цен для дальнейшего вычисления медианы
